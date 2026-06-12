@@ -30,7 +30,7 @@ Claude Code 턴 종료 (Stop 훅)
 
 | 파일 | 역할 |
 |---|---|
-| `~/.claude/hooks/notion_logger.py` | Stop 훅 스크립트 (표준 라이브러리만 사용, 맥/리눅스 공용) |
+| `~/.claude/hooks/notion_logger.py` | Stop 훅 스크립트 — 이 리포 `notion_logger.py` 의 심링크 (표준 라이브러리만 사용, 맥/리눅스 공용) |
 | `~/.claude/notion_token.txt` | Notion integration 액세스 토큰 (chmod 600) |
 | `~/.claude/settings.json` | 전역 `Stop` 훅 등록 |
 
@@ -46,10 +46,10 @@ Notion 쪽:
 ### 새 머신에 적용하기
 
 1. Claude Code 설치 + 로그인 확인: `claude -p "ping"`
-2. 파일 복사:
+2. 리포 clone 후 `auto_update.sh` 실행 — `~/.claude/hooks/notion_logger.py`
+   바로가기가 자동 생성된다. 토큰만 따로 복사한다:
    ```bash
-   ssh $SERVER "mkdir -p ~/.claude/hooks"
-   scp ~/.claude/hooks/notion_logger.py $SERVER:~/.claude/hooks/
+   ssh $SERVER "git clone <repo-url> ~/prj/myflow && ~/prj/myflow/auto_update.sh"
    scp ~/.claude/notion_token.txt $SERVER:~/.claude/
    ssh $SERVER "chmod 600 ~/.claude/notion_token.txt"
    ```
@@ -88,8 +88,10 @@ Notion 쪽:
   (Notion 페이지 `•••` → 연결).
 - **토큰 만료/교체**: `~/.claude/notion_token.txt` 내용만 갈아끼우면 됨.
 
-> 훅 스크립트는 `~/.claude/hooks/notion_logger.py` 가 원본이고,
-> 이 리포의 `notion_logger.py` 는 로컬 심볼릭 링크 바로가기다 (git 추적 안 함).
+> 훅 스크립트의 원본은 **이 리포의 `notion_logger.py`** 이고 (git 추적함),
+> `~/.claude/hooks/notion_logger.py` 는 그걸 가리키는 심볼릭 링크 바로가기다.
+> 바로가기는 `auto_update.sh` 가 없으면 자동 생성한다.
+> 덕분에 `git pull` 로 리포가 갱신되면 훅도 즉시 새 코드를 쓴다.
 
 ## 2. 일일 회고 자동 생성
 
