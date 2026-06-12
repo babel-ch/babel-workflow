@@ -3,6 +3,8 @@
 # remote에 새 커밋이 있으면 pull 해서 반영한다.
 #
 # 동작 개요
+#   0. ~/.claude/hooks/notion_logger.py 바로가기(심링크)가 없으면 만들고,
+#      다른 곳을 가리키면 이 repo의 notion_logger.py 를 가리키도록 고친다.
 #   1. `git fetch` 로 remote의 최신 정보만 받아온다 (이 단계에서 코드는 안 바뀜).
 #   2. local 커밋과 remote 커밋이 같으면 아무것도 하지 않는다.
 #   3. remote에만 새 커밋이 있으면 `git pull --ff-only` 로 반영한다.
@@ -32,6 +34,30 @@ log() {
 g() {
     git -C "$REPO_DIR" "$@"
 }
+
+# 0) ~/.claude/hooks/notion_logger.py 바로가기(심링크) 확인.
+#    없으면 만들고, 다른 곳을 가리키면 이 repo를 가리키도록 고친다.
+#    바로가기는 한 번 만들어두면 repo 파일이 pull로 바뀔 때 자동으로 새 내용을 보게 되므로,
+#    이 단계만 통과하면 훅 업데이트는 따로 할 일이 없다.
+HOOK_LINK="$HOME/.claude/hooks/notion_logger.py"
+HOOK_TARGET="$REPO_DIR/notion_logger.py"
+
+if [ -L "$HOOK_LINK" ]; then
+    # 이미 바로가기가 있음 — 가리키는 곳이 이 repo가 맞는지만 확인
+    CURRENT=$(readlink "$HOOK_LINK")
+    if [ "$CURRENT" != "$HOOK_TARGET" ]; then
+        ln -sf "$HOOK_TARGET" "$HOOK_LINK"
+        log "바로가기가 다른 곳($CURRENT)을 가리키고 있어 다시 연결했습니다: $HOOK_LINK → $HOOK_TARGET"
+    fi
+elif [ -e "$HOOK_LINK" ]; then
+    # 바로가기가 아니라 진짜 파일이 그 자리에 있음 — 지우면 그 안의 수정 내용이 사라질 수
+    # 있으므로 자동으로 덮어쓰지 않고 알리기만 한다 (사람이 직접 확인해야 함)
+    log "경고: $HOOK_LINK 가 바로가기가 아니라 일반 파일입니다. 덮어쓰지 않았으니 직접 확인하세요."
+else
+    mkdir -p "$HOME/.claude/hooks"
+    ln -s "$HOOK_TARGET" "$HOOK_LINK"
+    log "바로가기 생성: $HOOK_LINK → $HOOK_TARGET"
+fi
 
 # 1) remote의 최신 정보 받아오기 (코드는 아직 안 바뀜)
 if ! g fetch 2>&1; then
