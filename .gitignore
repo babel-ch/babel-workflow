@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# macOS
+.DS_Store
+
+# 로그 파일
+*.log
+
+# 비밀 값 (토큰 등) — 토큰은 ~/.claude/notion_token.txt 에만 둔다
+.env
