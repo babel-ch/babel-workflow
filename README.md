@@ -1,6 +1,23 @@
 # myflow
 
-개인 자동화 flow 모음.
+Babel의 개인 workflow 모음
+
+## 0. 준비물
+
+이 repo를 활용하기 위해 필요한 것들
+
+| 준비물 | 내용 | 사용처 |
+|---|---|---|
+| python3, git | 스크립트 실행(표준 라이브러리만 사용) / 자동 업데이트 | 전체 |
+| Claude Code | 설치 + 로그인 필요. <br> `claude` 명령이 $PATH 에 있어야 함. | flow 1, 2 (요약 생성) |
+| `~/.claude/notion_token.txt` | Notion integration 액세스 토큰 한 줄 (`chmod 600`) | flow 1, 2 (Notion 기록) |
+| Notion 데이터베이스 | `NOTION_DATABASE_ID` 가 가리키는 노션 로그 DB. <br> 조건: <br> ① 속성 `작업`(title) / `프로젝트`(select) / `날짜`(date) / `세션ID`(rich_text) <br> ② sub-item 활성화 (`Parent item` relation) <br> ③ integration 과 연결 필요 | flow 1, 2 |
+| `~/.claude/settings.json` 의 Stop 훅 | `notion_logger.py` 훅 등록 — 방법은 1번의 "새 머신에 적용하기" 참고 | flow 1 |
+
+> 다른 Notion 워크스페이스에서 쓰려면 위 조건대로 DB를 만든 뒤
+> `notion_logger.py` / `daily_summary.py` 의 `NOTION_DATABASE_ID` 를 바꿔야 함.
+
+(`~/.claude/hooks/` 심링크, `~/.claude/notion-log/` 폴더는 스크립트가 자동으로 생성)
 
 ## 1. Claude Code 작업 로그 Notion 자동 기록
 
@@ -22,9 +39,9 @@ Claude Code 턴 종료 (Stop 훅)
 
 - **재귀 가드**: 요약용 `claude -p` 호출도 Stop 훅을 타기 때문에 Naive 구현으로는 무한 재귀에 빠지게 된다.
   `CLAUDE_NOTION_LOGGER_SKIP` 환경변수로 무한 재귀를 차단한다.
-- **세션 ↔ 행 매핑**: 로컬 캐시(`~/.claude/notion-log/session_map.json`)
-  → 없으면 DB의 `세션ID` 속성 조회 → 없으면 새 행 생성.
-  캐시가 유실돼도 중복 행이 생기지 않는다.
+- **세션 ↔ 행 매핑**: <br> 1. 로컬 캐시(`~/.claude/notion-log/session_map.json`)
+  <br> 2. 없으면 DB의 `세션ID` 속성 조회 → 없으면 새 행 생성.
+  <br> 3. 캐시가 유실돼도 중복 행이 생기지 않는다.
 
 ### 구성 요소
 
@@ -34,11 +51,11 @@ Claude Code 턴 종료 (Stop 훅)
 | `~/.claude/notion_token.txt` | Notion integration 액세스 토큰 (chmod 600) |
 | `~/.claude/settings.json` | 전역 `Stop` 훅 등록 |
 
-Notion 쪽:
+Notion 세팅:
 
 - 데이터베이스 스키마: `작업`(title) / `프로젝트`(select, cwd 폴더명) / `날짜`(date) / `세션ID`(rich_text)
 - DB ID는 스크립트 상수 `NOTION_DATABASE_ID` 에 하드코딩
-- 뷰는 API로 생성 불가 → Notion UI에서 수동 구성
+- 뷰는 API로 생성 불가 → Notion UI에서 수동 구성(혹은 claude cowork에게 요청)
   - **날짜별 뷰**: Group = 날짜(일), Sub-group = 프로젝트
   - **프로젝트별 뷰**: Group = 프로젝트, Sub-group = 날짜(일)
   - 두 뷰는 같은 DB를 바라보므로 데이터는 단일 소스
@@ -89,8 +106,8 @@ Notion 쪽:
 - **토큰 만료/교체**: `~/.claude/notion_token.txt` 내용만 갈아끼우면 됨.
 
 > 훅 스크립트의 원본은 **이 리포의 `notion_logger.py`** 이고 (git 추적함),
-> `~/.claude/hooks/notion_logger.py` 는 그걸 가리키는 심볼릭 링크 바로가기다.
-> 바로가기는 `auto_update.sh` 가 없으면 자동 생성한다.
+> 실행되는 target python file은 `~/.claude/hooks/notion_logger.py` 는 그걸 가리키는 심볼릭 링크 바로가기
+> 바로가기는 `auto_update.sh` 가 없으면 자동 생성
 > 덕분에 `git pull` 로 리포가 갱신되면 훅도 즉시 새 코드를 쓴다.
 
 ## 2. 일일 회고 자동 생성
