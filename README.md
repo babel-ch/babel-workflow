@@ -12,7 +12,8 @@ Babel의 개인 workflow 모음
 | Claude Code | 설치 + 로그인 필요. <br> `claude` 명령이 $PATH 에 있어야 함. | flow 1, 2 (요약 생성) |
 | `~/.claude/notion_token.txt` | Notion integration 액세스 토큰 한 줄 (`chmod 600`) | flow 1, 2 (Notion 기록) |
 | Notion 데이터베이스 | `NOTION_DATABASE_ID` 가 가리키는 노션 로그 DB. <br> 조건: <br> ① 속성 `작업`(title) / `프로젝트`(select) / `날짜`(date) / `세션ID`(rich_text) <br> ② sub-item 활성화 (`Parent item` relation) <br> ③ integration 과 연결 필요 | flow 1, 2 |
-| `~/.claude/settings.json` 의 Stop 훅 | `notion_logger.py` 훅 등록 — 방법은 1번의 "새 머신에 적용하기" 참고 | flow 1 |
+| `~/.claude/settings.json` 의 Stop 훅 | `auto_update.sh` 가 리포의 `stop_hooks.json` 기준으로 자동 등록·동기화 (jq 필요) | flow 1 |
+| jq | JSON을 안전하게 읽고 고치는 명령줄 도구 — Stop 훅 자동 동기화에 사용. <br> mac: `brew install jq` / linux: `apt install jq` | Stop 훅 동기화 |
 
 > 다른 Notion 워크스페이스에서 쓰려면 위 조건대로 DB를 만든 뒤
 > `notion_logger.py` / `daily_summary.py` 의 `NOTION_DATABASE_ID` 를 바꿔야 함.
@@ -49,7 +50,8 @@ Claude Code 턴 종료 (Stop 훅)
 |---|---|
 | `~/.claude/hooks/notion_logger.py` | Stop 훅 스크립트 — 이 리포 `notion_logger.py` 의 심링크 (표준 라이브러리만 사용, 맥/리눅스 공용) |
 | `~/.claude/notion_token.txt` | Notion integration 액세스 토큰 (chmod 600) |
-| `~/.claude/settings.json` | 전역 `Stop` 훅 등록 |
+| `~/.claude/settings.json` | 전역 `Stop` 훅 등록 — `auto_update.sh` 가 `stop_hooks.json` 과 다르면 자동으로 맞춰줌 |
+| `stop_hooks.json` (이 리포) | Stop 훅의 "최신 상태" 원본. `{{REPO_DIR}}` 는 적용 시 실제 repo 경로로 치환됨. 훅 구성을 바꾸려면 이 파일을 고쳐서 push |
 
 Notion 세팅:
 
@@ -70,23 +72,11 @@ Notion 세팅:
    scp ~/.claude/notion_token.txt $SERVER:~/.claude/
    ssh $SERVER "chmod 600 ~/.claude/notion_token.txt"
    ```
-3. 서버의 `~/.claude/settings.json` 에 Stop 훅 추가 (기존 설정과 병합):
-   ```json
-   {
-     "hooks": {
-       "Stop": [
-         {
-           "hooks": [
-             {
-               "type": "command",
-               "command": "python3 ~/.claude/hooks/notion_logger.py"
-             }
-           ]
-         }
-       ]
-     }
-   }
-   ```
+3. Stop 훅은 2번에서 실행한 `auto_update.sh` 가 자동으로 등록한다
+   (리포의 `stop_hooks.json` 을 원본으로 `~/.claude/settings.json` 의 `hooks.Stop` 만 교체,
+   나머지 설정은 그대로 둠). 서버에 jq 가 없으면 먼저 설치할 것 (`apt install jq`).
+   훅 구성을 바꾸고 싶으면 settings.json 을 직접 고치지 말고 `stop_hooks.json` 을
+   수정해서 push — 각 머신의 `auto_update.sh` 가 다음 실행 때 알아서 반영한다.
 4. 동작 테스트:
    ```bash
    tp=$(find ~/.claude/projects -name "*.jsonl" | head -1)

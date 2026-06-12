@@ -1,0 +1,17 @@
+[
+  {
+    "hooks": [
+      {
+        "type": "command",
+        "command": "{{REPO_DIR}}/.venv/bin/python3 ~/.claude/hooks/notion_logger.py"
+      },
+      {
+        "type": "command",
+        "command": "{{REPO_DIR}}/auto_update.sh >> ~/.myflow_update.log 2>&1 || true",
+        "timeout": 120,
+        "statusMessage": "myflow 자동 업데이트 중...",
+        "async": true
+      }
+    ]
+  }
+]
