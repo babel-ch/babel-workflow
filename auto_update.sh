@@ -125,6 +125,39 @@ update_repo() {
     fi
 }
 
+# 4.5) ~/.claude/skills/<name> 바로가기(심링크) 동기화.
+#       repo의 skills/ 아래 각 skill 디렉토리를 ~/.claude/skills/ 에 심링크로 노출한다.
+#       notion_logger 심링크(0단계)와 달리 pull 다음에 실행한다 — 새 skill 이 이번
+#       pull 로 처음 들어오는 경우에도 같은 실행에서 바로가기가 걸리게 하기 위함이다.
+#       (한 번 걸어두면 repo 파일이 pull 로 바뀔 때 자동으로 새 내용을 본다.)
+sync_skills() {
+    SKILLS_SRC="$REPO_DIR/skills"
+    SKILLS_DST="$HOME/.claude/skills"
+
+    [ -d "$SKILLS_SRC" ] || return 0  # repo에 skills/ 가 없으면 할 일 없음
+    mkdir -p "$SKILLS_DST"
+
+    for skill_path in "$SKILLS_SRC"/*/; do
+        [ -d "$skill_path" ] || continue          # skills/ 가 비어 있으면 패턴이 그대로 남음
+        target="${skill_path%/}"                  # 끝의 / 제거
+        name=$(basename "$target")
+        link="$SKILLS_DST/$name"
+
+        if [ -L "$link" ]; then
+            CURRENT=$(readlink "$link")
+            if [ "$CURRENT" != "$target" ]; then
+                ln -sf "$target" "$link"
+                log "skill 바로가기 재연결: $link → $target"
+            fi
+        elif [ -e "$link" ]; then
+            log "경고: $link 가 바로가기가 아니라 일반 파일/폴더입니다. 덮어쓰지 않았으니 직접 확인하세요."
+        else
+            ln -s "$target" "$link"
+            log "skill 바로가기 생성: $link → $target"
+        fi
+    done
+}
+
 # 5) ~/.claude/settings.json 의 Stop 훅 동기화.
 #    repo의 stop_hooks.json 이 원하는 상태(원본)이고, 파일 안의 {{REPO_DIR}} 는
 #    적용하는 순간 실제 repo 경로로 바꿔 넣는다. settings.json 의 다른 설정
@@ -185,5 +218,6 @@ sync_stop_hook() {
 
 update_repo
 UPDATE_RC=$?
+sync_skills
 sync_stop_hook
 exit $UPDATE_RC
