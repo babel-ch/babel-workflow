@@ -62,7 +62,10 @@ python3 ~/.claude/skills/issue-commentor/fetch_today.py --project "$(basename "$
 - 이 `fetch_today.py` 는 repo 루트의 공통 모듈 `notion_today.py` 를 호출하는 얇은
   진입점이다. issue-generator 와 로직을 공유하지만 그쪽 경로에 의존하지는 않는다.
 - 특정 날짜를 원하면 `--date 2026-06-10` 을 덧붙인다 (기본: 오늘).
-- 출력은 JSON: `{"project", "date", "sessions": [{"title", "turns": [...]}]}`.
+- 출력은 JSON: `{"project", "date", "sessions": [{"title", "turns": [{"summary", "actions": [...]}]}]}`.
+  `summary` 는 사람이 읽는 턴 요약, `actions` 는 그 턴에서 편집/생성한 파일·돌린 명령 등
+  실제 도구 호출 목록(근거)이다. 코멘트를 쓸 땐 둘 다 참고하되(특히 `actions` 로 무엇을
+  실제로 진척시켰는지 확인), 출력은 3번 지침대로 사람이 읽기 편하게 정리한다(도구 호출 raw 나열 금지).
 - `sessions` 가 비어 있으면 "오늘 이 프로젝트의 로그가 없다"는 뜻이니 사용자에게 알리고
   세션 모드로 갈지 묻는다.
 

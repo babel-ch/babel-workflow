@@ -52,7 +52,10 @@ python3 "$CLAUDE_SKILL_DIR/fetch_today.py" --project "$(basename "$PWD")"
 - `$CLAUDE_SKILL_DIR` 가 없으면 이 SKILL.md가 있는 디렉토리 경로를 직접 쓴다
   (`~/.claude/skills/issue-generator`).
 - 특정 날짜를 원하면 `--date 2026-06-10` 을 덧붙인다 (기본: 오늘).
-- 출력은 JSON: `{"project", "date", "sessions": [{"title", "turns": [...]}]}`.
+- 출력은 JSON: `{"project", "date", "sessions": [{"title", "turns": [{"summary", "actions": [...]}]}]}`.
+  `summary` 는 사람이 읽는 턴 요약, `actions` 는 그 턴에서 편집/생성한 파일·돌린 명령 등
+  실제 도구 호출 목록(근거)이다. 요약할 땐 둘 다 참고하되(특히 `actions` 로 무엇을 실제로
+  바꿨는지 확인), 출력은 4번 지침대로 사람이 읽기 편하게 정리한다(도구 호출 raw 나열 금지).
 - `sessions` 가 비어 있으면 "오늘 이 프로젝트의 로그가 없다"는 뜻이니 사용자에게 알리고
   세션 모드로 갈지 묻는다.
 

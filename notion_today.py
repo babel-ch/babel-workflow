@@ -9,9 +9,13 @@ JSON 으로 출력한다. 조회 로직은 daily_summary.py 의 함수를 그대
 
 출력(JSON, stdout):
   {"project": "myflow", "date": "2026-06-15",
-   "sessions": [{"title": "...", "turns": ["[10:20] ...", ...]}, ...]}
+   "sessions": [{"title": "...",
+                 "turns": [{"summary": "[10:20] ...",
+                            "actions": ["Edit: ...", "Bash: ...", ...]}, ...]}, ...]}
 
-sessions 가 비어 있으면 그날 그 프로젝트의 로그가 없다는 뜻이다.
+  turns[].summary 는 사람이 읽는 턴 요약, turns[].actions 는 그 턴에서 실제로
+  편집/생성한 파일·돌린 명령(근거)이다. actions 는 본문 턴 bullet 아래 접힌
+  '파일·명령' 토글에서 읽어온다. sessions 가 비어 있으면 그날 로그가 없다는 뜻이다.
 
 사용법(직접 실행, 개발용):
   python3 notion_today.py --project myflow
