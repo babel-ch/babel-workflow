@@ -342,7 +342,7 @@ def summarize(project, prompt, response, actions, current_title):
     env[SKIP_ENV] = "1"  # 이 claude 호출의 Stop 훅 재귀 방지
     try:
         result = subprocess.run(
-            [CLAUDE_BIN, "-p", instruction],
+            [CLAUDE_BIN, "-p", "--no-session-persistence", instruction],
             capture_output=True, text=True, timeout=120, env=env,
         )
         out = result.stdout.strip()
