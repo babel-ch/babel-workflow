@@ -18,6 +18,7 @@ Claude Code 일일 회고: Notion 작업 로그 DB에서 하루치 기록을 모
   python3 daily_summary.py                  # 오늘
   python3 daily_summary.py --date 2026-06-10
   python3 daily_summary.py --dry-run        # Notion에 쓰지 않고 결과만 출력
+  python3 daily_summary.py --force          # 행이 많아도(임계값 초과) 강행
 """
 
 import json
@@ -27,6 +28,7 @@ import subprocess
 import sys
 import urllib.request
 import urllib.error
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -44,6 +46,11 @@ NOTION_TOKEN_PATH = Path.home() / ".claude" / "notion_token.txt"
 NOTION_TOKEN = NOTION_TOKEN_PATH.read_text().strip() if NOTION_TOKEN_PATH.is_file() else ""
 NOTION_DATABASE_ID = "37cf979eb42380fdadf4fcf02ca704f1"
 NOTION_VERSION = "2022-06-28"
+
+# 하루 행 수 방어선: 이 수를 넘으면 더미/배치 로그를 의심하고 중단한다.
+# 행마다 Notion 조회(extract_turns)가 있어, 수백~수천 행이면 수집 단계에서
+# 사실상 멈춘 것처럼 느려진다. --force 로 우회 가능.
+MAX_ROWS_BEFORE_WARN = 100
 
 CLAUDE_BIN = (
     shutil.which("claude")
@@ -173,20 +180,31 @@ def extract_turns(row_id):
                 if child.get("type") != "toggle":
                     continue
                 for a in list_children(child["id"]):
-                    if a.get("type") != "bulleted_list_item":
+                    typ = a.get("type")
+                    if typ in ("code", "paragraph"):
+                        # 새 형식: 도구 호출을 한 블록에 개행으로 모아 담음
+                        lines = block_plain_text(a).split("\n")
+                    elif typ == "bulleted_list_item":
+                        # 옛 형식: 도구 호출마다 bullet 한 개 (하위호환)
+                        lines = [block_plain_text(a)]
+                    else:
                         continue
-                    text = block_plain_text(a)
-                    if _action_recordable(text):
-                        actions.append(text)
+                    for text in lines:
+                        text = text.strip()
+                        if text and _action_recordable(text):
+                            actions.append(text)
         turns.append({"summary": block_plain_text(b), "actions": actions})
     return turns
 
 
-def collect_by_project(rows):
+def collect_by_project(rows, progress=False):
     """행들을 {프로젝트: [{"title":…, "turns":[{"summary", "actions":[…]}]}]} 로 묶는다.
-    turns[].summary 는 사람이 읽는 요약, turns[].actions 는 그 턴의 실제 도구 호출(근거)."""
+    turns[].summary 는 사람이 읽는 요약, turns[].actions 는 그 턴의 실제 도구 호출(근거).
+    행마다 Notion 조회(extract_turns)가 있어 행이 많으면 느리다. progress=True 면
+    진행 상황을 stderr 로 흘려, '멈춘 것처럼 보이는' 상태를 눈에 보이게 한다."""
     grouped = {}
-    for row in rows:
+    total = len(rows)
+    for i, row in enumerate(rows, 1):
         props = row.get("properties", {})
         try:
             title = "".join(t["plain_text"] for t in props["작업"]["title"])
@@ -198,6 +216,8 @@ def collect_by_project(rows):
             project = "(미분류)"
         turns = extract_turns(row["id"])
         grouped.setdefault(project, []).append({"title": title, "turns": turns})
+        if progress and (i % 25 == 0 or i == total):
+            print(f"  수집 중… {i}/{total}", file=sys.stderr, flush=True)
     return grouped
 
 
@@ -372,7 +392,26 @@ def main():
         print(f"{date_str} 작업 로그가 없습니다. 기록을 건너뜁니다.")
         return
 
-    grouped = collect_by_project(rows)
+    # 방어: 하루 행 수가 비정상적으로 많으면 더미/배치 로그일 수 있다. 행마다 Notion
+    # 조회가 있어 수백~수천 행이면 수집 단계에서 사실상 멈춘 듯 느려지므로, 프로젝트별
+    # 개수를 보여 주고 --force 없이는 중단한다(원인을 눈으로 확인하고 진행하도록).
+    if len(rows) > MAX_ROWS_BEFORE_WARN and "--force" not in sys.argv:
+        by_proj = Counter()
+        for r in rows:
+            try:
+                by_proj[r["properties"]["프로젝트"]["select"]["name"]] += 1
+            except (KeyError, TypeError):
+                by_proj["(미분류)"] += 1
+        print(f"경고: {date_str} 행이 {len(rows)}개로 비정상적으로 많습니다 "
+              f"(임계값 {MAX_ROWS_BEFORE_WARN}). 더미/배치 로그일 수 있습니다.",
+              file=sys.stderr)
+        for p, c in by_proj.most_common():
+            print(f"    {p}: {c}", file=sys.stderr)
+        print("각 행마다 Notion 조회가 일어나 매우 느립니다. 확인 후에도 진행하려면 "
+              "--force 를 붙이세요.", file=sys.stderr)
+        sys.exit(1)
+
+    grouped = collect_by_project(rows, progress=len(rows) > 25)
     print(f"{date_str}: {len(rows)}개 세션, {len(grouped)}개 프로젝트 수집. 요약 생성 중…")
     projects = summarize_day(date_str, grouped)
 

@@ -292,7 +292,8 @@ def extract_turn(transcript_path):
 # ─────────────────────────────────────────────────────────────
 MAX_ACTIONS_IN_PROMPT = 30
 MAX_ACTIONS_IN_LOG = 50  # 턴 bullet 아래 '파일·명령' 토글에 남길 도구 호출 최대 개수
-                         # (Notion 의 100 children/req 한도 안에서 여유 있게)
+                         # (코드 블록 한 개에 개행으로 모아 담으므로 블록 수와 무관.
+                         #  목록이 지나치게 길어지는 것만 막는 상한)
 
 
 def summarize(project, prompt, response, actions, current_title):
@@ -530,26 +531,34 @@ def update_title(page_id, title):
     }))
 
 
-def _action_bullets(actions):
-    """도구 호출 문자열 목록을 toggle 안에 넣을 bulleted_list_item 블록 목록으로.
-    상한을 넘으면 마지막에 '… 외 N건' 한 줄을 덧붙인다."""
-    bullets = [{
-        "object": "block",
-        "type": "bulleted_list_item",
-        "bulleted_list_item": {
-            "rich_text": [{"type": "text", "text": {"content": a[:2000]}}]
-        },
-    } for a in actions[:MAX_ACTIONS_IN_LOG]]
+def _rich_text_chunks(text, limit=2000):
+    """긴 문자열을 Notion rich_text 배열로 나눈다(각 조각의 content 는 ≤ limit).
+    한 블록 안의 rich_text 여러 조각은 이어져 보이므로, 블록 수는 늘리지 않고
+    2000자 한도만 우회한다."""
+    if not text:
+        return [{"type": "text", "text": {"content": ""}}]
+    return [{"type": "text", "text": {"content": text[i:i + limit]}}
+            for i in range(0, len(text), limit)]
+
+
+def _actions_code_block(actions):
+    """도구 호출 목록을 toggle 안에 넣을 '코드 블록 하나'로 만든다.
+    예전엔 호출마다 bullet(별도 블록)을 만들었는데, 블록 수가 불어나면 한 PATCH 의
+    블록 한도(100)에 가까워지고 페이지도 무거워진다. 여기선 개행으로 한 블록에 모아
+    담아 항상 블록 1개로 유지한다. 상한을 넘으면 끝에 '… 외 N건' 을 덧붙인다."""
+    shown = actions[:MAX_ACTIONS_IN_LOG]
+    text = "\n".join(shown)
     extra = len(actions) - MAX_ACTIONS_IN_LOG
     if extra > 0:
-        bullets.append({
-            "object": "block",
-            "type": "bulleted_list_item",
-            "bulleted_list_item": {
-                "rich_text": [{"type": "text", "text": {"content": f"… 외 {extra}건"}}]
-            },
-        })
-    return bullets
+        text += f"\n… 외 {extra}건"
+    return {
+        "object": "block",
+        "type": "code",
+        "code": {
+            "language": "plain text",
+            "rich_text": _rich_text_chunks(text),
+        },
+    }
 
 
 def record_turn(page_id, title, turn_summary, actions=None, last_date=None):
@@ -600,7 +609,7 @@ def record_turn(page_id, title, turn_summary, actions=None, last_date=None):
                 "toggle": {
                     "rich_text": [{"type": "text",
                                    "text": {"content": f"🔧 파일·명령 {len(actions)}건"}}],
-                    "children": _action_bullets(actions),
+                    "children": [_actions_code_block(actions)],
                 },
             }]})
 
