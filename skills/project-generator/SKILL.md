@@ -84,6 +84,7 @@ description: >-
 2. 정리한 내용으로 `name`/`summary`/`description` 초안을 만든다(4번 형식).
 
 ### 4. 프로젝트 본문 생성 (name · summary · description)
+현학적인 표현을 피하고 직관적이고 쉬운 표현을 사용한다.
 
 - **name**: 한 줄. 프로젝트가 무엇을 위한 묶음인지 드러나게.
 - **summary**: 한 줄 요약(≤255자). 목록/카드에서 보일 핵심.
