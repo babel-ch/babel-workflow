@@ -224,20 +224,48 @@ def collect_by_project(rows, progress=False):
 # ─────────────────────────────────────────────────────────────
 # 2) 프로젝트별 정리 (claude -p)
 # ─────────────────────────────────────────────────────────────
-def build_log_text(grouped):
+def _fair_budgets(sizes, total):
+    """섹션 크기 목록 sizes 에 예산 total 을 공평 분배한 몫 목록을 돌려준다.
+    작은 섹션은 제 크기만큼만 쓰고, 남는 예산은 큰 섹션들이 다시 균등하게 나눈다
+    ('물 채우기'). 덕분에 한 섹션이 통째로 0이 되어 사라지는 일이 없다."""
+    budgets = [0] * len(sizes)
+    idx = list(range(len(sizes)))
+    remaining = total
+    while idx:
+        share = remaining // len(idx)
+        small = [i for i in idx if sizes[i] <= share]
+        if not small:  # 남은 섹션이 모두 share 초과 → 균등 배분하고 종료
+            for i in idx:
+                budgets[i] = share
+            break
+        for i in small:  # share 안에 들어오는 섹션은 제 크기만 확정, 남은 예산 회수
+            budgets[i] = sizes[i]
+            remaining -= sizes[i]
+            idx.remove(i)
+    return budgets
+
+
+def build_log_text(grouped, total_budget=32000):
     """요약 LLM 에 넣을 텍스트. 턴 요약(summary)과 그 근거(actions: 편집/생성한
     파일·돌린 명령)를 함께 적어, 정확히 정리할 수 있게 한다. 정리 결과는 사람이 읽기
-    좋게 만들도록 instruction 에서 따로 지시한다."""
-    parts = []
+    좋게 만들도록 instruction 에서 따로 지시한다.
+
+    프로젝트마다 예산을 공평하게 나눠 자른다. 전체를 한 번에 자르면 세션·도구 호출이
+    폭증한 한 프로젝트가 예산을 다 먹어 나머지가 통째로 잘리고, 그 프로젝트들이
+    요약에서 아예 누락된다(입력에 안 들어가므로)."""
+    sections = []
     for project, sessions in grouped.items():
-        parts.append(f"## {project}")
+        lines = [f"## {project}"]
         for s in sessions:
-            parts.append(f"- 세션: {s['title']}")
+            lines.append(f"- 세션: {s['title']}")
             for t in s["turns"]:
-                parts.append(f"  - {t['summary']}")
+                lines.append(f"  - {t['summary']}")
                 for a in t.get("actions", []):
-                    parts.append(f"      · {a}")
-    return "\n".join(parts)[:16000]
+                    lines.append(f"      · {a}")
+        sections.append("\n".join(lines))
+
+    budgets = _fair_budgets([len(s) for s in sections], total_budget)
+    return "\n".join(s[:b] for s, b in zip(sections, budgets))
 
 
 def summarize_day(date_str, grouped):
