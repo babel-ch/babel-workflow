@@ -21,6 +21,10 @@ Claude Code Stop hook: 세션 단위로 작업 내용을 Notion 데이터베이�
   2. 무한 재귀 가드: 요약용 `claude -p` 호출이 다시 Stop 훅을 트리거하므로
      CLAUDE_NOTION_LOGGER_SKIP 환경변수가 있으면 즉시 종료한다.
      자정 가드: 23:50~00:10 에는 날짜 귀속이 틀어질 수 있어 기록하지 않는다.
+     세션 가드: skip/<session_id> 마커가 있으면 그 세션 전체를 기록하지 않는다.
+     한 턴 가드: skip-once/<session_id> 마커가 있으면 그 턴만 건너뛰고 마커를
+     지운다(다음 턴부터는 다시 기록). 둘 다 no-log 스킬(/no-log)이 만든다.
+     마커 디렉토리는 ~/.claude/notion-log/ 아래.
   3. 턴을 블로킹하지 않도록 실제 작업(요약+전송)은 백그라운드 워커로 분리하고
      훅 본체는 곧바로 exit 0 한다.
   4. 워커: transcript에서 마지막 턴의 사용자 프롬프트 + 응답 + 도구 호출 목록
@@ -36,6 +40,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 import urllib.error
 from datetime import datetime
@@ -67,6 +72,14 @@ CLAUDE_BIN = (
     )
 )
 SKIP_ENV = "CLAUDE_NOTION_LOGGER_SKIP"
+# 세션별 기록 끄기 마커. no-log 스킬이 skip/<session_id> 빈 파일을 만든다.
+# env 가드(SKIP_ENV)는 세션 시작 시점에만 정할 수 있어서, 대화 도중 끄는 용도로는
+# 이 마커를 쓴다. 마커를 세우기 전에 이미 기록된 턴은 그대로 둔다.
+SKIP_DIR = LOCAL_LOG_DIR / "skip"
+# 한 턴만 끄는 마커. 훅이 읽는 순간 지워지므로 다음 턴부터는 다시 기록된다.
+SKIP_ONCE_DIR = LOCAL_LOG_DIR / "skip-once"
+ONCE_MARKER_MAX_AGE_SEC = 3600  # 이보다 오래된 한 턴 마커는 소비하지 않고 버린다
+SKIP_MARKER_TTL_DAYS = 14  # 세션이 끝나면 마커는 쓸모없어지므로 이만큼 지나면 지운다
 
 
 # ─────────────────────────────────────────────────────────────
@@ -656,9 +669,73 @@ def run_worker(data):
         update_title(parent_id, title)
 
 
+def is_skipped(session_id):
+    """이 세션에 기록 끄기 마커가 있으면 True. no-log 스킬이 마커를 만든다."""
+    if not session_id or "/" in session_id:
+        return False
+    try:
+        return (SKIP_DIR / session_id).exists()
+    except OSError:
+        return False
+
+
+def consume_once_marker(session_id):
+    """이 턴만 끄는 마커를 소비한다. 껐어야 하면 True.
+
+    마커는 한 번 쓰이면 지워지므로 다음 턴부터는 다시 기록된다. 훅이 아예 실행되지
+    않은 채(세션 강제 종료 등) 남은 마커가 나중에 엉뚱한 턴을 잡아먹지 않도록,
+    만든 지 오래된 마커는 지우기만 하고 건너뛰지는 않는다.
+    """
+    if not session_id or "/" in session_id:
+        return False
+    marker = SKIP_ONCE_DIR / session_id
+    try:
+        age = time.time() - marker.stat().st_mtime
+    except OSError:
+        return False  # 없거나 못 읽으면 평소대로 기록
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    return age <= ONCE_MARKER_MAX_AGE_SEC
+
+
+def purge_old_skip_markers():
+    """TTL 지난 마커 삭제. 세션이 끝나도 마커가 스스로 사라지진 않으므로 여기서 치운다."""
+    cutoff = time.time() - SKIP_MARKER_TTL_DAYS * 86400
+    for d in (SKIP_DIR, SKIP_ONCE_DIR):
+        try:
+            for p in d.glob("*"):
+                try:
+                    if p.is_file() and p.stat().st_mtime < cutoff:
+                        p.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+
 def main():
     # 재귀 가드: 요약용 claude -p 가 트리거한 Stop 훅이면 즉시 종료
     if os.environ.get(SKIP_ENV):
+        sys.exit(0)
+
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        data = {}
+    session_id = data.get("session_id", "")
+
+    # 세션 가드: no-log 로 세션 전체를 꺼 뒀으면 훅·워커 모두 조용히 종료.
+    # 마커를 세우기 전에 만들어진 Notion 행은 건드리지 않는다 (의도된 동작).
+    if is_skipped(session_id):
+        sys.exit(0)
+
+    # 한 턴 가드: 이 턴만 끄는 마커. 자정 가드보다 먼저 소비해서 턴당 정확히 한 번
+    # 쓰이게 한다 (자정 구간이라 어차피 기록 안 하는 턴에 마커가 남아 다음 턴을
+    # 잡아먹는 것을 막는다).
+    if consume_once_marker(session_id):
         sys.exit(0)
 
     # 자정 가드: 23:50~00:10 에는 기록하지 않는다 (early fail).
@@ -670,14 +747,9 @@ def main():
     if minutes >= 23 * 60 + 50 or minutes < 10:
         sys.exit(0)
 
-    raw = sys.stdin.read()
-    try:
-        data = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError:
-        data = {}
-
     # 워커 모드: 실제 작업 수행
     if "--worker" in sys.argv:
+        purge_old_skip_markers()
         run_worker(data)
         sys.exit(0)
 
